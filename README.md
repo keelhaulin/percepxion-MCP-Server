@@ -50,7 +50,7 @@ Failed response envelope:
 
 ## Percepxion MCP tools reference
 
-TDocument docs/tools.md lists all tools exposed by the Percepxion MCP server.
+Document docs/tools.md lists all tools exposed by the Percepxion MCP server.
 It is designed for quick scanning and linking from issues or PRs.
 
 ## Tool count summary
