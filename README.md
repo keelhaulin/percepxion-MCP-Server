@@ -88,7 +88,7 @@ docker run --rm -it --env-file .env percepxion-mcp-server
 | --- | --- | --- | --- |
 | `PERCEPXION_USERNAME` | yes | none | Percepxion login username |
 | `PERCEPXION_PASSWORD` | yes | none | Percepxion login password |
-| `PERCEPXION_API_URL` | no | `https://api.gopercepxion.ai/api` | Percepxion API base URL |
+| `PERCEPXION_API_URL` | yes | `https://api.gopercepxion.ai/api` | Percepxion API base URL |
 | `PERCEPXION_REQUEST_TIMEOUT` | no | `45` | HTTP timeout in seconds |
 
 ## Connect an MCP client
