@@ -27,7 +27,7 @@ Percepxion supports multiple Lantronix device families. Minimum versions in the 
 - SLB: 6.5.0.0
 - SLC 8000: 7.6.0.1
 - SpiderDuo and Spider KVM: 5.0.0.0
-- LM83X and SLC hybrid: 9.6.0.0
+- SLC: 9.6.0.0
 
 ## How it works
 
