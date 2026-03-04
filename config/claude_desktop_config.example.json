@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "percepxion": {
+      "command": "python",
+      "args": [
+        "percepxion_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "percepxion": {
+      "command": "wsl.exe",
+      "args": [
+        "bash",
+        "-lc",
+        "cd <PATH_TO_REPO_IN_WSL> && .venv/bin/python percepxion_mcp.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
