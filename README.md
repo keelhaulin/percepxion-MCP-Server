@@ -48,6 +48,51 @@ Failed response envelope:
 }
 ```
 
+# Percepxion MCP tools reference
+
+TDocument docs/tools.md lists all tools exposed by the Percepxion MCP server.
+It is designed for quick scanning and linking from issues or PRs.
+
+## Tool count summary
+
+- Total tools: 23
+- Source file: `src/percepxion_mcp/server.py`
+
+## Quick Tool usage rules
+
+- Call `login_with_env` once per MCP server process start.
+- Many actions run as jobs.
+  These tools return a job group record, not the final device output.
+- Use `search_job_groups` to track job progress and results.
+
+## Tools Summary table
+
+| Category | Tool | Returns final data | Primary API endpoint(s) | Follow up |
+| --- | --- | --- | --- | --- |
+| Authentication | `login_with_env` | Yes | `POST /v2/user/login` | None |
+| Inventory | `get_device_list` | Yes | `POST /v3/device/search` | None |
+| Inventory | `get_device_details` | Yes | `POST /v3/device/get` | None |
+| Inventory | `get_devices_by_organization` | Yes | `POST /v3/device/search` | None |
+| Lifecycle | `import_and_assign_devices` | Yes | `POST /v3/device/assign` | None |
+| Lifecycle | `unassign_devices` | Yes | `POST /v3/device/unassign` | None |
+| Lifecycle | `remove_device_from_platform` | Yes | `POST /v3/device/unassign` | None |
+| Smart Groups | `automate_smart_group` | Yes | `POST /v3/device/smartgroup/create` | None |
+| CLI | `send_direct_cli_command` | No | `POST /v1/job/jobgroup/create` | `search_job_groups` |
+| CLI | `send_cli_command` | No | Wrapper for `send_direct_cli_command` | `search_job_groups` |
+| Config | `update_device_config` | No | `POST /v1/telemetry/config/save` then `POST /v1/job/jobgroup/create` | `search_job_groups` |
+| Config | `clone_device_config` | No | `POST /v1/telemetry/template/create` then `POST /v1/job/jobgroup/create` | `search_job_groups` |
+| Firmware | `get_device_firmware_status` | Yes | `POST /v3/device/get` | None |
+| Firmware | `firmware_compliance_report` | Yes | `POST /v3/device/search` | None |
+| Firmware | `update_firmware_by_smart_group` | No | `POST /v3/content/create` (multipart) | `search_job_groups` |
+| Logs | `request_device_syslog_upload` | No | `POST /v1/job/jobgroup/create` | `search_job_groups` |
+| Logs | `get_device_syslogs` | Yes | `POST /v1/storage/file/content/query` | None |
+| Logs | `query_device_access_log` | Yes | `POST /v1/storage/file/devicelog/query-by-id` | None |
+| Logs | `download_device_access_log` | Yes | `POST /v1/storage/file/devicelog/download` | None |
+| Security | `get_security_telemetry` | Yes | `POST /v1/telemetry/stat/view` | None |
+| Audit | `investigate_audit_logs` | Yes | `POST /v1/audit/search` | None |
+| Audit | `investigate_user_audit_logs` | Yes | `POST /v1/audit/user/search` | None |
+| Jobs | `search_job_groups` | Yes | `POST /v1/job/jobgroup/search` | None |
+
 ## Prerequisites
 
 - Python 3.11+ (3.12 recommended)
@@ -88,7 +133,7 @@ docker run --rm -it --env-file .env percepxion-mcp-server
 | --- | --- | --- | --- |
 | `PERCEPXION_USERNAME` | yes | none | Percepxion login username |
 | `PERCEPXION_PASSWORD` | yes | none | Percepxion login password |
-| `PERCEPXION_API_URL` | yes | `https://api.gopercepxion.ai/api` | Percepxion API base URL |
+| `PERCEPXION_API_URL` | no | `https://api.gopercepxion.ai/api` | Percepxion API base URL |
 | `PERCEPXION_REQUEST_TIMEOUT` | no | `45` | HTTP timeout in seconds |
 
 ## Connect an MCP client
