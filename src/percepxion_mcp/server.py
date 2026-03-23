@@ -1,5 +1,8 @@
 import json
+import logging
 import os
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +11,13 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP
 
 load_dotenv()
+
+logging.basicConfig(
+    stream=sys.stderr,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] percepxion_mcp: %(message)s",
+)
+logger = logging.getLogger("percepxion_mcp")
 
 mcp = FastMCP("Percepxion-Server")
 
@@ -110,13 +120,16 @@ def _api_post(
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
     except requests.RequestException as exc:
+        logger.error("Request failed for %s: %s", path, exc)
         return _err(f"Request failed for {path}: {exc}")
 
     payload = _extract_json(response)
     if response.status_code == 401:
+        logger.warning("Token expired for %s — session cleared", path)
         session.clear()
         return _err("Unauthorized or token expired. Run login_with_env again.", 401, payload)
     if response.status_code >= 400:
+        logger.error("API error %s for %s", response.status_code, path)
         return _err(f"API error for {path}", response.status_code, payload)
     return _ok(payload, response.status_code)
 
@@ -143,6 +156,7 @@ def login_with_env() -> dict[str, Any]:
 
     session.auth_token = token
     session.csrf_token = csrf
+    logger.info("Authenticated as %s", USER)
     return _ok({"message": "Authenticated successfully.", "username": USER})
 
 
@@ -282,7 +296,7 @@ def automate_smart_group(
 def send_direct_cli_command(device_id: str, command: str, description: str = "Triggered via MCP") -> dict[str, Any]:
     """Send a direct CLI command to one device."""
     payload = {
-        "name": f"CLI_{device_id[:12]}",
+        "name": f"CLI_{device_id[:12]}_{int(time.time())}",
         "description": description,
         "enable": True,
         "type": "command",
@@ -330,7 +344,7 @@ def update_device_config(
         return save_resp
 
     job_payload: dict[str, Any] = {
-        "name": f"Config_Update_{device_id[:12]}",
+        "name": f"Config_Update_{device_id[:12]}_{int(time.time())}",
         "description": "Apply saved config from MCP",
         "type": "command",
         "subtype": "config",
@@ -475,7 +489,7 @@ def request_device_syslog_upload(
         log_request["to_date"] = to_date
 
     payload: dict[str, Any] = {
-        "name": "MCP_Syslog_Request",
+        "name": f"Syslog_{int(time.time())}",
         "description": "Request device syslog upload",
         "operation": "upload",
         "type": "command",
