@@ -1,508 +1,307 @@
-# Percepxion MCP Server (FastMCP)
+# Percepxion MCP Server
 
-This repo contains a Python FastMCP server that exposes Percepxion REST APIs as MCP tools.
-Run it on your workstation or a small utility host.
-Connect it to an MCP client such as Claude Desktop.
+A Python [FastMCP](https://github.com/jlowin/fastmcp) server that exposes the [Percepxion](https://gopercepxion.ai) REST API as MCP tools. Connect it to Claude Desktop, Claude Code, or any MCP-compatible client to manage out-of-band infrastructure through natural language.
 
-## Purpose
+## What is Percepxion?
 
-Percepxion already has a REST API.
-MCP turns that API into a tool catalog that an MCP client can call.
-This lets you drive Percepxion tasks from a chat UI or an agent workflow.
+Percepxion is a SaaS platform for out-of-band (OOB) network device management. It connects to console servers, serial port aggregators, and remote access devices (such as Lantronix SLC9000) to provide fleet-wide visibility, configuration management, firmware updates, CLI access, and compliance reporting — independent of the primary network path.
 
-## Common use cases
+This MCP server gives AI assistants direct access to Percepxion's management capabilities.
 
-- Inventory discovery and triage
-- Run CLI commands on a device, then pull logs for the same device
-- Apply small config edits, then push them to the device
-- Clone config records from a known good device to a target device
-- Check firmware compliance across a fleet
-- Push firmware to a Smart Group and track job progress
-- Pull audit history for a user or time window
+---
+
+## Use cases
+
+- Inventory discovery: find all devices in an organization, filter by model or firmware version
+- Remote CLI execution: run commands on a device and retrieve output through Percepxion
+- Config management: push individual property changes or clone a full config from a reference device
+- Firmware compliance: compare fleet firmware versions against a target and identify non-compliant devices
+- Firmware updates: upload firmware and target a Smart Group for coordinated rollout
+- Log retrieval: pull syslogs or access logs from devices on demand
+- Audit investigation: search platform audit records by user, time range, or action
+- Tenant management: list organizations and scope operations to specific tenants
+
+---
 
 ## How it works
 
-- The server runs locally and reads credentials from `.env`.
-- `login_with_env` authenticates and stores tokens in memory for this process.
-- Each tool maps to one or more Percepxion API endpoints.
-- Tool responses use a consistent envelope.
+The server runs locally and communicates with the Percepxion API over HTTPS. Authentication uses username/password — the server exchanges these for session tokens and holds them in memory for the lifetime of the process.
 
-Response envelope:
+Many Percepxion operations are asynchronous. Tools that trigger device actions (CLI commands, config pushes, firmware updates, syslog requests) create a Percepxion job group and return the job record. Use `search_job_groups` to poll job status and retrieve results.
 
-```json
-{
-  "ok": true,
-  "data": { "...": "..." },
-  "status_code": 200
-}
-```
-
-Failed response envelope:
+**Response envelope — all tools return this structure:**
 
 ```json
-{
-  "ok": false,
-  "error": "...",
-  "status_code": 401,
-  "details": { "...": "..." }
-}
+{ "ok": true, "data": { ... }, "status_code": 200 }
 ```
 
-## Percepxion MCP tools reference
+```json
+{ "ok": false, "error": "...", "status_code": 401, "details": { ... } }
+```
 
-Document docs/tools.md lists all tools exposed by the Percepxion MCP server.
-It is designed for quick scanning and linking from issues or PRs.
-
-## Tool count summary
-
-- Total tools: 23
-- Source file: `src/percepxion_mcp/server.py`
-
-## Quick Tool usage rules
-
-- Call `login_with_env` once per MCP server process start.
-- Many actions run as jobs.
-  These tools return a job group record, not the final device output.
-- Use `search_job_groups` to track job progress and results.
-
-## Tools Summary table
-
-| Category | Tool | Returns final data | Primary API endpoint(s) | Follow up |
-| --- | --- | --- | --- | --- |
-| Authentication | `login_with_env` | Yes | `POST /v2/user/login` | None |
-| Inventory | `get_device_list` | Yes | `POST /v3/device/search` | None |
-| Inventory | `get_device_details` | Yes | `POST /v3/device/get` | None |
-| Inventory | `get_devices_by_organization` | Yes | `POST /v3/device/search` | None |
-| Lifecycle | `import_and_assign_devices` | Yes | `POST /v3/device/assign` | None |
-| Lifecycle | `unassign_devices` | Yes | `POST /v3/device/unassign` | None |
-| Lifecycle | `remove_device_from_platform` | Yes | `POST /v3/device/unassign` | None |
-| Smart Groups | `automate_smart_group` | Yes | `POST /v3/device/smartgroup/create` | None |
-| CLI | `send_direct_cli_command` | No | `POST /v1/job/jobgroup/create` | `search_job_groups` |
-| CLI | `send_cli_command` | No | Wrapper for `send_direct_cli_command` | `search_job_groups` |
-| Config | `update_device_config` | No | `POST /v1/telemetry/config/save` then `POST /v1/job/jobgroup/create` | `search_job_groups` |
-| Config | `clone_device_config` | No | `POST /v1/telemetry/template/create` then `POST /v1/job/jobgroup/create` | `search_job_groups` |
-| Firmware | `get_device_firmware_status` | Yes | `POST /v3/device/get` | None |
-| Firmware | `firmware_compliance_report` | Yes | `POST /v3/device/search` | None |
-| Firmware | `update_firmware_by_smart_group` | No | `POST /v3/content/create` (multipart) | `search_job_groups` |
-| Logs | `request_device_syslog_upload` | No | `POST /v1/job/jobgroup/create` | `search_job_groups` |
-| Logs | `get_device_syslogs` | Yes | `POST /v1/storage/file/content/query` | None |
-| Logs | `query_device_access_log` | Yes | `POST /v1/storage/file/devicelog/query-by-id` | None |
-| Logs | `download_device_access_log` | Yes | `POST /v1/storage/file/devicelog/download` | None |
-| Security | `get_security_telemetry` | Yes | `POST /v1/telemetry/stat/view` | None |
-| Audit | `investigate_audit_logs` | Yes | `POST /v1/audit/search` | None |
-| Audit | `investigate_user_audit_logs` | Yes | `POST /v1/audit/user/search` | None |
-| Jobs | `search_job_groups` | Yes | `POST /v1/job/jobgroup/search` | None |
+---
 
 ## Prerequisites
 
-- Python 3.11+ (3.12 recommended)
+- Python 3.11 or later (3.12 recommended)
 - Network access to your Percepxion API base URL
-- A Percepxion username and password
+- A Percepxion username and password with appropriate permissions
 
-## Deploy and run
+---
 
-### Quick start on Linux or WSL
+## Quick start
+
+### Linux or WSL
 
 ```bash
-git clone <this-repo-url>
-cd percepxion-mcp-server
+git clone https://github.com/keelhaulin/percepxion-MCP-Server.git
+cd percepxion-MCP-Server
 
 python3 -m venv .venv
 source .venv/bin/activate
-
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env and set PERCEPXION_USERNAME and PERCEPXION_PASSWORD
+# Edit .env — set PERCEPXION_USERNAME, PERCEPXION_PASSWORD, PERCEPXION_API_URL
+```
 
+Test the server starts:
+
+```bash
 python percepxion_mcp.py
 ```
 
-The server runs in the foreground and waits for MCP client connections.
+The server blocks and waits for an MCP client connection. Connect a client, then call `login_with_env` to authenticate.
 
-### Docker (optional)
+### Docker
 
 ```bash
 docker build -t percepxion-mcp-server .
 docker run --rm -it --env-file .env percepxion-mcp-server
 ```
 
-### Environment variables
+---
 
-| Variable | Required | Default | Meaning |
-| --- | --- | --- | --- |
-| `PERCEPXION_USERNAME` | yes | none | Percepxion login username |
-| `PERCEPXION_PASSWORD` | yes | none | Percepxion login password |
-| `PERCEPXION_API_URL` | yes | `https://api.gopercepxion.ai/api` | Percepxion API base URL |
-| `PERCEPXION_REQUEST_TIMEOUT` | no | `45` | HTTP timeout in seconds |
+## Environment variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `PERCEPXION_USERNAME` | Yes | — | Percepxion login username |
+| `PERCEPXION_PASSWORD` | Yes | — | Percepxion login password |
+| `PERCEPXION_API_URL` | Yes | `https://api.gopercepxion.ai/api` | Percepxion API base URL |
+| `PERCEPXION_REQUEST_TIMEOUT` | No | `45` | HTTP timeout in seconds. Raise for large log downloads or slow links. |
+| `PERCEPXION_FIRMWARE_DIR` | No | — | If set, firmware uploads are restricted to files in this directory. Recommended for shared or automated deployments. |
+
+Keep `.env` out of version control. The repo includes `.env.example` as a starting point.
+
+---
 
 ## Connect an MCP client
 
-### Claude Desktop configuration
+### Claude Code (recommended)
 
-This repo includes two examples:
+Add the server to your Claude Code MCP configuration:
 
-- `config/claude_desktop_config.example.json` (Linux or macOS)
-- `config/claude_desktop_config.wsl_windows.example.json` (Windows calling WSL)
+```bash
+claude mcp add percepxion -- /path/to/percepxion-MCP-Server/.venv/bin/python /path/to/percepxion-MCP-Server/percepxion_mcp.py
+```
 
-Steps:
+Or add manually to `~/.claude/settings.json`:
 
-1. Copy the example file.
-2. Replace placeholders with your local paths.
-3. Restart Claude Desktop.
+```json
+{
+  "mcpServers": {
+    "percepxion": {
+      "command": "/path/to/percepxion-MCP-Server/.venv/bin/python",
+      "args": ["/path/to/percepxion-MCP-Server/percepxion_mcp.py"],
+      "env": { "PYTHONUNBUFFERED": "1" }
+    }
+  }
+}
+```
 
-Keep credentials in `.env`.
-Do not place secrets in the Claude config.
+### Claude Desktop (Linux or macOS)
+
+Copy `config/claude_desktop_config.example.json` and fill in your paths. The file goes in:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+### Claude Desktop (Windows calling WSL)
+
+Use `config/claude_desktop_config.wsl_windows.example.json`. Replace `<PATH_TO_REPO_IN_WSL>` with the WSL path to this repo (e.g. `/home/youruser/percepxion-MCP-Server`).
 
 ### First connection check
 
-1. Start the server.
-2. In your MCP client, call `login_with_env`.
-3. Run `get_device_list` with `search_query` set to `*`.
+Once connected, verify the integration:
 
-## Tool catalog
+1. Call `login_with_env`
+2. Call `get_device_list` with `search_query: "*"`
 
-### Additional docs
+If `get_device_list` returns devices, the server is working.
 
-- `docs/tools.md` has a summary table and job tracking patterns.
-- `docs/adding-new-tools.md` covers tool development conventions.
-- `docs/claude-example.prompt` is a starter prompt for Claude Desktop.
+---
 
+## Tool reference
 
-Most tools require `login_with_env` first.
-Log and job tools accept date ranges in RFC3339 format.
+Full reference in [`docs/tools.md`](docs/tools.md). Quick summary below.
 
-Example RFC3339 timestamp:
-
-```text
-2026-03-04T00:00:00Z
-```
+**Session must be established with `login_with_env` before calling any other tool.**
 
 ### Authentication
 
-#### login_with_env
+| Tool | Description |
+|---|---|
+| `login_with_env` | Authenticate using credentials from `.env`. Call once per session. |
 
-Authenticate using `PERCEPXION_USERNAME` and `PERCEPXION_PASSWORD` from `.env`.
+### Tenant management
 
-Example prompt:
+| Tool | Description |
+|---|---|
+| `list_tenants` | List organizations visible to the current user. Use to discover `tenant_id` values. |
 
-```text
-Log in to Percepxion.
-```
+### Device inventory
 
-### Device inventory and discovery
-
-#### get_device_list
-
-Search devices and return matching inventory details.
-
-Key parameters:
-
-- `search_query` (default `*`)
-- `limit` and `offset` for pagination
-- `sort` and `order` for sorting
-- `tenant_id` to scope to an organization
-
-Example prompt:
-
-```text
-List all devices sorted by device_name.
-```
-
-Example arguments:
-
-```json
-{ "search_query": "*", "limit": 50, "sort": "device_name", "order": "asc" }
-```
-
-#### get_device_details
-
-Get full device properties by `device_id` or `serial_num`.
-
-Example arguments:
-
-```json
-{ "device_id": "abc-123" }
-```
-
-#### get_devices_by_organization
-
-List all devices assigned to a tenant.
-
-Example arguments:
-
-```json
-{ "tenant_id": "org-456", "limit": 200 }
-```
+| Tool | Description |
+|---|---|
+| `get_device_list` | Search and paginate the device inventory. Accepts `tenant_id` for org scoping. |
+| `get_device_details` | Get full device properties by `device_id` or `serial_num`. |
+| `get_devices_by_organization` | List all devices in a specific tenant (convenience wrapper for `get_device_list`). |
 
 ### Device lifecycle
 
-#### import_and_assign_devices
-
-Assign devices to a tenant.
-Each device item needs `device_id`, `device_name`, and `serial_num`.
-
-Example arguments:
-
-```json
-{
-  "tenant_id": "org-456",
-  "devices": [
-    { "device_id": "d-001", "device_name": "switch-01", "serial_num": "SN123" },
-    { "device_id": "d-002", "device_name": "switch-02", "serial_num": "SN124" }
-  ]
-}
-```
-
-#### unassign_devices
-
-Remove one or more devices from their current tenant assignment.
-
-Example arguments:
-
-```json
-{ "device_ids": ["d-001", "d-002"], "tenant_id": "org-456" }
-```
-
-#### remove_device_from_platform
-
-Convenience wrapper for unassigning a single device.
-
-Example arguments:
-
-```json
-{ "device_id": "abc-123" }
-```
+| Tool | Description |
+|---|---|
+| `import_and_assign_devices` | Assign devices to a tenant. Processes each device individually and reports per-device results. |
+| `unassign_devices` | Remove one or more devices from a tenant. |
+| `remove_device_from_platform` | Convenience wrapper to remove a single device. |
 
 ### Smart Groups
 
-#### automate_smart_group
-
-Create a Smart Group using a query string or an explicit list of device IDs.
-
-Example arguments with a query:
-
-```json
-{ "name": "Building A Switches", "query": "location:building-a AND type:switch" }
-```
-
-Example arguments with explicit device IDs:
-
-```json
-{ "name": "Batch Update Set", "device_ids": ["d-001", "d-002"], "temporary": true }
-```
+| Tool | Description |
+|---|---|
+| `create_smart_group` | Create a Smart Group using a filter query or explicit device ID list. Used to target bulk firmware and config operations. |
 
 ### CLI commands
 
-#### send_direct_cli_command
-
-Create a CLI job group that runs a command on one device.
-Use `search_job_groups` to track completion.
-
-Example arguments:
-
-```json
-{ "device_id": "abc-123", "command": "show version" }
-```
-
-#### send_cli_command
-
-Alias for `send_direct_cli_command`.
-Keep it for older workflows.
+| Tool | Description | Async? |
+|---|---|---|
+| `send_direct_cli_command` | Send a CLI command to one device. Commands are audit-logged to stderr. | Yes — use `search_job_groups` |
 
 ### Device configuration
 
-#### update_device_config
-
-Save config items for a device, then optionally apply them.
-
-Example arguments for a single property:
-
-```json
-{ "device_id": "abc-123", "property_name": "dns_server", "new_value": "8.8.8.8", "apply_now": true }
-```
-
-Example arguments for multiple items:
-
-```json
-{
-  "device_id": "abc-123",
-  "items": [
-    { "name": "dns_server", "value": "8.8.8.8" },
-    { "name": "ntp_server", "value": "time.google.com" }
-  ],
-  "apply_now": true
-}
-```
-
-#### clone_device_config
-
-Create a template from a source device, then apply it to a target device.
-
-Example arguments:
-
-```json
-{
-  "source_device_id": "src-001",
-  "target_device_id": "tgt-002",
-  "record_names": ["vlan", "interfaces"],
-  "template_name": "Baseline_Template"
-}
-```
+| Tool | Description | Async? |
+|---|---|---|
+| `update_device_config` | Save config properties and optionally apply them immediately. | Yes if `apply_now=True` |
+| `clone_device_config` | Copy config groups from a source device to a target device via a template. | Yes — use `search_job_groups` |
 
 ### Firmware management
 
-#### get_device_firmware_status
+| Tool | Description | Async? |
+|---|---|---|
+| `get_device_firmware_status` | Get firmware version and state for one device. | No |
+| `firmware_compliance_report` | Compare fleet firmware against an expected version. Returns compliant, non-compliant, and unknown device lists. | No |
+| `update_firmware_by_smart_group` | Upload a firmware file and apply it to devices in one or more Smart Groups. Firmware file must be on the server host. | Yes — use `search_job_groups` |
 
-Return a firmware summary for one device.
+### Logging
 
-Example arguments:
+| Tool | Description | Async? |
+|---|---|---|
+| `request_device_syslog_upload` | Trigger devices to upload syslogs to Percepxion storage. | Yes — use `search_job_groups` |
+| `get_device_syslogs` | Query syslog content already uploaded to Percepxion. | No |
+| `query_device_access_log` | Paginated query of device access log entries. | No |
+| `download_device_access_log` | Download complete access log content for one device. | No |
 
-```json
-{ "device_id": "abc-123" }
+### Security and audit
+
+| Tool | Description |
+|---|---|
+| `get_security_telemetry` | Retrieve security-relevant telemetry statistics for a device. |
+| `investigate_audit_logs` | Search platform audit records by user, time range, or keyword. |
+| `investigate_user_audit_logs` | Search user records with last recorded audit action per user. |
+
+### Job tracking
+
+| Tool | Description |
+|---|---|
+| `search_job_groups` | Poll async job status. Use after any tool that returns a job group record. |
+
+### Job tracking workflow
+
+When a tool creates a job, it returns a job group record immediately. The device operation continues asynchronously. To get results:
+
+```
+1. Call the action tool (e.g. send_direct_cli_command)
+   → Returns: { "ok": true, "data": { "job_group_id": "...", "name": "CLI_abc_1742900000" } }
+
+2. Call search_job_groups with the job name or ID
+   → Returns: job status, output, and per-device results
 ```
 
-#### firmware_compliance_report
-
-Compare device firmware against an expected version.
-
-Example arguments:
+Example for a CLI command:
 
 ```json
-{ "expected_firmware_version": "7.2.1", "search_query": "*", "limit": 1000 }
+{ "search_string": "CLI_abc", "job_type": "command", "subtype": "cli", "limit": 5 }
 ```
 
-#### update_firmware_by_smart_group
+Job names include a Unix timestamp suffix to avoid collisions when multiple jobs run against the same device.
 
-Upload a firmware file and target one or more Smart Groups.
-The firmware file path must exist on the machine running the server.
+---
 
-Example arguments:
+## Security
 
-```json
-{
-  "firmware_file_path": "/home/user/firmware/fw-7.2.1.bin",
-  "smart_group_ids": ["sg-001"],
-  "content_name": "fw-7.2.1",
-  "version": "7.2.1",
-  "description": "March 2026 baseline",
-  "enable": true
-}
-```
+This server executes operations on production network infrastructure. Treat it accordingly.
 
-### Logging and monitoring
+**Credentials:**
+- Keep `.env` outside of version control. The `.gitignore` in this repo excludes it.
+- Set file permissions to `600`: `chmod 600 .env`
+- Use a dedicated Percepxion service account with the minimum permissions required for your use case. Do not use an admin account for automated or agent-driven workflows.
 
-#### get_device_syslogs
+**CLI command execution:**
+- `send_direct_cli_command` sends arbitrary CLI commands to devices through Percepxion. There is no command allowlist in the server. A session with this MCP tool can reconfigure or reset devices.
+- All CLI commands dispatched through the server are logged to stderr with the device ID and command string for audit purposes.
+- In production or shared environments, restrict who can start the MCP server process.
 
-Query syslog content that already exists in Percepxion storage.
+**Firmware uploads:**
+- `update_firmware_by_smart_group` reads a local file path and uploads it to Percepxion.
+- Set `PERCEPXION_FIRMWARE_DIR` to restrict uploads to a specific directory. Without this variable, any file the server process can read can be uploaded.
 
-Example arguments:
+**Token handling:**
+- Auth tokens are stored in memory only and are never written to disk.
+- On a 401 response, the session is cleared automatically. Re-run `login_with_env` to restore the session.
+- There is no automatic token refresh. Long-running workflows should handle 401 responses and re-authenticate.
 
-```json
-{ "device_id": "abc-123", "limit": 20 }
-```
+**Network:**
+- The server communicates with Percepxion over HTTPS only.
+- Verify `PERCEPXION_API_URL` points to the correct Percepxion instance before running in any automated context.
 
-#### request_device_syslog_upload
-
-Trigger a job that uploads logs from one or more devices.
-Use RFC3339 timestamps for `from_date` and `to_date`.
-
-Example arguments:
-
-```json
-{
-  "device_ids": ["d-001", "d-002"],
-  "log_level": "error",
-  "from_date": "2026-03-01T00:00:00Z",
-  "to_date": "2026-03-04T00:00:00Z"
-}
-```
-
-#### query_device_access_log
-
-Query access log entries with pagination.
-
-Example arguments:
-
-```json
-{ "device_id": "abc-123", "log_level": "info", "limit": 200, "offset": 0 }
-```
-
-#### download_device_access_log
-
-Download the complete access log content for one device.
-
-Example arguments:
-
-```json
-{ "device_id": "abc-123", "log_level": "info" }
-```
-
-#### get_security_telemetry
-
-Fetch security-relevant telemetry stats.
-
-Example arguments:
-
-```json
-{ "device_id": "abc-123", "selected": true }
-```
-
-### Audit and job tracking
-
-#### investigate_audit_logs
-
-Search platform audit records.
-If you omit dates, the tool searches a broad default range.
-
-Example arguments:
-
-```json
-{
-  "usernames": ["jane.smith"],
-  "from_date": "2026-03-01T00:00:00Z",
-  "to_date": "2026-03-04T00:00:00Z",
-  "limit": 200
-}
-```
-
-#### investigate_user_audit_logs
-
-Search users and show the last recorded audit action per user.
-
-Example arguments:
-
-```json
-{ "user_filter": "admin", "limit": 100 }
-```
-
-#### search_job_groups
-
-Search job groups to track async operations.
-
-Example arguments:
-
-```json
-{ "search_string": "Config_Update_", "job_type": "command", "limit": 50 }
-```
+---
 
 ## Troubleshooting
 
-- "Not authenticated" errors mean you need to run `login_with_env`.
-- A `401` response clears the stored token. Run `login_with_env` again.
-- Raise `PERCEPXION_REQUEST_TIMEOUT` for slow links or large log downloads.
-- Check `PERCEPXION_API_URL` if all calls fail.
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| "Not authenticated" | `login_with_env` not called or token expired | Call `login_with_env` |
+| `401` on any tool | Token expired mid-session | Call `login_with_env` again |
+| All calls fail or time out | Wrong `PERCEPXION_API_URL` | Check the URL in `.env` |
+| Slow log downloads time out | Default 45s timeout too short | Set `PERCEPXION_REQUEST_TIMEOUT=120` |
+| Firmware upload rejected | File outside `PERCEPXION_FIRMWARE_DIR` | Move file to allowed directory or unset the variable |
+| Server exits immediately | Python path or venv issue | Run `python percepxion_mcp.py` directly to see the error |
 
-## Security notes
+---
 
-- Treat `.env` as a secret. Do not commit it.
-- Use a least-privilege Percepxion account for automation.
-- The server stores auth tokens in memory only.
+## Developer docs
+
+- [`docs/tools.md`](docs/tools.md) — full tool reference with API endpoint mapping
+- [`docs/adding-new-tools.md`](docs/adding-new-tools.md) — conventions for adding tools to this server
+- [`docs/claude-example.prompt`](docs/claude-example.prompt) — starter system prompt for Claude Desktop sessions
+
+---
 
 ## Changelog
 
-See `CHANGELOG.md`.
+See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
-See `LICENSE`.
+See [`LICENSE`](LICENSE).

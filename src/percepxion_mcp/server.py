@@ -25,6 +25,8 @@ API_BASE_URL = os.getenv("PERCEPXION_API_URL", "https://api.gopercepxion.ai/api"
 USER = os.getenv("PERCEPXION_USERNAME")
 PASSWORD = os.getenv("PERCEPXION_PASSWORD")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("PERCEPXION_REQUEST_TIMEOUT", "45"))
+# If set, firmware uploads are restricted to files within this directory.
+FIRMWARE_DIR = os.getenv("PERCEPXION_FIRMWARE_DIR")
 
 
 class PercepxionSession:
@@ -212,6 +214,37 @@ def get_devices_by_organization(tenant_id: str, limit: int = 100) -> dict[str, A
 
 
 @mcp.tool()
+def list_tenants(
+    search_query: str = "*",
+    limit: int = 100,
+    offset: int = 0,
+    sort: str = "name",
+    order: str = "asc",
+) -> dict[str, Any]:
+    """
+    List tenants (organizations) visible to the authenticated user.
+
+    Use this to discover tenant_id values before calling tools that require one.
+    Returns tenant names, IDs, and status.
+
+    Args:
+        search_query: Filter by tenant name. Use '*' for all.
+        limit: Number of results to return (1-1000).
+        offset: Pagination offset.
+        sort: Field to sort by (default: 'name').
+        order: Sort direction — 'asc' or 'desc'.
+    """
+    payload: dict[str, Any] = {
+        "search_string": search_query,
+        "limit": min(max(1, limit), 1000),
+        "offset": max(0, offset),
+        "sort": sort,
+        "order": order,
+    }
+    return _api_post("/v1/tenant/search", json_body=payload)
+
+
+@mcp.tool()
 def import_and_assign_devices(devices: list[dict[str, Any]], tenant_id: str | None = None) -> dict[str, Any]:
     """
     Assign devices to Percepxion tenant/project.
@@ -265,7 +298,7 @@ def remove_device_from_platform(device_id: str, tenant_id: str | None = None) ->
 
 
 @mcp.tool()
-def automate_smart_group(
+def create_smart_group(
     name: str,
     query: str | None = None,
     device_ids: list[str] | None = None,
@@ -273,7 +306,20 @@ def automate_smart_group(
     temporary: bool = False,
     tenant_id: str | None = None,
 ) -> dict[str, Any]:
-    """Create a Smart Group using either query string or explicit device IDs."""
+    """
+    Create a Smart Group for targeting bulk operations (firmware updates, config pushes).
+
+    Provide either query (filter expression) or device_ids (explicit list), not both.
+    Set temporary=True for one-off operation targets that should not persist.
+
+    Args:
+        name: Display name for the Smart Group.
+        query: Filter expression (e.g. 'firmware_ver:9.7.0 AND model:SLC9032').
+        device_ids: Explicit list of Percepxion device IDs to include.
+        description: Optional human-readable description.
+        temporary: If True, the group is flagged for cleanup after use.
+        tenant_id: Scope to a specific tenant.
+    """
     if not query and not device_ids:
         return _err("Provide query or device_ids.")
 
@@ -293,8 +339,39 @@ def automate_smart_group(
 
 
 @mcp.tool()
+def automate_smart_group(
+    name: str,
+    query: str | None = None,
+    device_ids: list[str] | None = None,
+    description: str = "",
+    temporary: bool = False,
+    tenant_id: str | None = None,
+) -> dict[str, Any]:
+    """Deprecated alias for create_smart_group. Use create_smart_group instead."""
+    return create_smart_group(
+        name=name,
+        query=query,
+        device_ids=device_ids,
+        description=description,
+        temporary=temporary,
+        tenant_id=tenant_id,
+    )
+
+
+@mcp.tool()
 def send_direct_cli_command(device_id: str, command: str, description: str = "Triggered via MCP") -> dict[str, Any]:
-    """Send a direct CLI command to one device."""
+    """
+    Send a CLI command to one device via a Percepxion job group.
+
+    The command runs asynchronously. Use search_job_groups to retrieve output.
+    Commands are logged to stderr for audit purposes.
+
+    Args:
+        device_id: Percepxion device ID (from get_device_list).
+        command: CLI command string to execute on the device.
+        description: Human-readable label stored in the job group record.
+    """
+    logger.info("CLI command dispatched — device_id=%s command=%r", device_id, command)
     payload = {
         "name": f"CLI_{device_id[:12]}_{int(time.time())}",
         "description": description,
@@ -310,7 +387,7 @@ def send_direct_cli_command(device_id: str, command: str, description: str = "Tr
 
 @mcp.tool()
 def send_cli_command(device_id: str, command: str) -> dict[str, Any]:
-    """Backward-compatible alias for send_direct_cli_command."""
+    """Deprecated alias for send_direct_cli_command. Use send_direct_cli_command instead."""
     return send_direct_cli_command(device_id=device_id, command=command)
 
 
@@ -595,11 +672,18 @@ def update_firmware_by_smart_group(
     if not smart_group_ids:
         return _err("smart_group_ids cannot be empty.")
 
-    firmware_path = Path(firmware_file_path)
+    firmware_path = Path(firmware_file_path).resolve()
     if not firmware_path.exists():
         return _err(f"Firmware file not found: {firmware_file_path}")
     if not firmware_path.is_file():
         return _err(f"Firmware path is not a file: {firmware_file_path}")
+    if FIRMWARE_DIR:
+        allowed = Path(FIRMWARE_DIR).resolve()
+        if not str(firmware_path).startswith(str(allowed)):
+            return _err(
+                f"Firmware file is outside the allowed directory ({FIRMWARE_DIR}). "
+                "Set PERCEPXION_FIRMWARE_DIR to the directory containing your firmware files."
+            )
 
     data_payload: dict[str, Any] = {
         "name": content_name,
