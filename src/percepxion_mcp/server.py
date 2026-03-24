@@ -314,7 +314,7 @@ def create_smart_group(
 
     Args:
         name: Display name for the Smart Group.
-        query: Filter expression (e.g. 'firmware_ver:9.7.0 AND model:SLC9032').
+        query: Filter expression (e.g. 'firmware_ver:9.7.0 AND model:console-server').
         device_ids: Explicit list of Percepxion device IDs to include.
         description: Optional human-readable description.
         temporary: If True, the group is flagged for cleanup after use.

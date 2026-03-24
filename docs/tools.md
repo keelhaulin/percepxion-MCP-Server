@@ -92,7 +92,7 @@ Step 2 — search for the apply job:
 Step 1 — identify non-compliant devices:
 
 ```json
-{ "expected_firmware_version": "9.7.0.0R4", "search_query": "*", "model_filter": "SLC9032" }
+{ "expected_firmware_version": "9.7.0", "search_query": "*", "model_filter": "console-server" }
 ```
 
 Step 2 — create a Smart Group targeting those devices:
@@ -105,15 +105,15 @@ Step 3 — upload firmware and target the group:
 
 ```json
 {
-  "firmware_file_path": "/home/user/firmware/slc9update-9.8.0.0R5.tgz",
+  "firmware_file_path": "/home/user/firmware/device-fw-9.8.0.tgz",
   "smart_group_ids": ["sg-abc"],
-  "content_name": "slc9-9.8.0.0R5",
-  "version": "9.8.0.0R5"
+  "content_name": "device-fw-9.8.0",
+  "version": "9.8.0"
 }
 ```
 
 Step 4 — track the update job:
 
 ```json
-{ "search_string": "slc9-9.8.0.0R5", "job_type": "command" }
+{ "search_string": "device-fw-9.8.0", "job_type": "command" }
 ```

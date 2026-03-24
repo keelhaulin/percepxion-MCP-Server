@@ -4,7 +4,7 @@ A Python [FastMCP](https://github.com/jlowin/fastmcp) server that exposes the [P
 
 ## What is Percepxion?
 
-Percepxion is a SaaS platform for out-of-band (OOB) network device management. It connects to console servers, serial port aggregators, and remote access devices (such as Lantronix SLC9000) to provide fleet-wide visibility, configuration management, firmware updates, CLI access, and compliance reporting — independent of the primary network path.
+Percepxion is a SaaS platform for out-of-band (OOB) network device management. It connects to console servers, serial port aggregators, and remote access devices to provide fleet-wide visibility, configuration management, firmware updates, CLI access, and compliance reporting — independent of the primary network path.
 
 This MCP server gives AI assistants direct access to Percepxion's management capabilities.
 
